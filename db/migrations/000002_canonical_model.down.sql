@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS tax_lots;
+DROP TABLE IF EXISTS transactions;
+DROP TABLE IF EXISTS positions;
+DROP TABLE IF EXISTS securities;
+DROP TABLE IF EXISTS accounts;
