@@ -13,6 +13,7 @@ import (
 	"github.com/trustlot/trustlot/internal/db"
 	"github.com/trustlot/trustlot/internal/explain"
 	"github.com/trustlot/trustlot/internal/replay"
+	"github.com/trustlot/trustlot/internal/trust"
 )
 
 // Server is the HTTP API server.
@@ -22,6 +23,7 @@ type Server struct {
 	store     *db.Store
 	explainer explain.Service
 	replayer  replay.Service
+	truster   trust.Service
 }
 
 // NewServer creates a configured HTTP server.
@@ -38,9 +40,11 @@ func NewServer(addr string, store *db.Store) *Server {
 
 	var explainer explain.Service
 	var replayer replay.Service
+	var truster trust.Service
 	if store != nil {
 		explainer = explain.NewService(store)
 		replayer = replay.NewService(store)
+		truster = trust.NewService(store)
 	}
 
 	s := &Server{
@@ -53,6 +57,7 @@ func NewServer(addr string, store *db.Store) *Server {
 		store:     store,
 		explainer: explainer,
 		replayer:  replayer,
+		truster:   truster,
 	}
 
 	s.routes()

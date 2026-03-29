@@ -10,7 +10,11 @@ func (s *Server) routes() {
 		r.Get("/exceptions/{id}", s.handleGetException())
 		r.Get("/exceptions/{id}/explanation", s.handleGetExplanation())
 		r.Get("/recon-runs", s.handleListReconRuns())
+
 		r.Get("/trust-scores", s.handleListTrustScores())
+		r.Get("/trust-scores/recon-result/{id}", s.handleTrustScoreForReconResult())
+		r.Get("/trust-scores/exception/{id}", s.handleTrustScoreForException())
+
 		r.Get("/lineage/{entityType}/{entityID}", s.handleTraceLineage())
 
 		r.Get("/replay-cases", s.handleListReplayCases())

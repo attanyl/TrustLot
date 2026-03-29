@@ -42,6 +42,23 @@ type Explanation = {
   suggested_actions: SuggestedAction[];
 };
 
+type TrustScoreResult = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  score: number;
+  components: {
+    source_reliability: number;
+    reconciliation: number;
+    freshness: number;
+    completeness: number;
+    human_review: number;
+    anomaly_penalty: number;
+  };
+  rationale_summary: string;
+  computed_at: string;
+};
+
 async function getException(id: string): Promise<Exception | null> {
   try {
     return await apiFetch<Exception>(`/api/v1/exceptions/${id}`);
@@ -58,6 +75,16 @@ async function getExplanation(id: string): Promise<Explanation | null> {
   }
 }
 
+async function getTrustScore(id: string): Promise<TrustScoreResult | null> {
+  try {
+    return await apiFetch<TrustScoreResult>(
+      `/api/v1/trust-scores/exception/${id}`
+    );
+  } catch {
+    return null;
+  }
+}
+
 export default async function ExceptionDetailPage({
   params,
 }: {
@@ -65,6 +92,7 @@ export default async function ExceptionDetailPage({
 }) {
   const exc = await getException(params.id);
   const explanation = exc ? await getExplanation(params.id) : null;
+  const trustScore = exc ? await getTrustScore(params.id) : null;
 
   return (
     <div>
@@ -95,6 +123,8 @@ export default async function ExceptionDetailPage({
               value={new Date(exc.CreatedAt).toLocaleString()}
             />
           </div>
+
+          {trustScore && <TrustScoreCard score={trustScore} />}
 
           {explanation ? (
             <div className="space-y-4">
@@ -241,6 +271,72 @@ function Section({
     <div className="bg-zinc-800 border border-zinc-700 rounded p-4">
       <h3 className="text-sm font-medium text-zinc-400 mb-2">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+function TrustScoreCard({ score }: { score: TrustScoreResult }) {
+  const level =
+    score.score >= 75 ? "High" : score.score >= 40 ? "Medium" : "Low";
+  const color =
+    score.score >= 75
+      ? "text-emerald-400 border-emerald-500/30"
+      : score.score >= 40
+        ? "text-amber-400 border-amber-500/30"
+        : "text-red-400 border-red-500/30";
+  const bgBar =
+    score.score >= 75
+      ? "bg-emerald-500"
+      : score.score >= 40
+        ? "bg-amber-500"
+        : "bg-red-500";
+
+  const components = [
+    { label: "Source Reliability", value: score.components.source_reliability },
+    { label: "Reconciliation", value: score.components.reconciliation },
+    { label: "Freshness", value: score.components.freshness },
+    { label: "Completeness", value: score.components.completeness },
+    { label: "Human Review", value: score.components.human_review },
+    {
+      label: "Anomaly Penalty",
+      value: score.components.anomaly_penalty,
+      isPenalty: true,
+    },
+  ];
+
+  return (
+    <div className={`bg-zinc-800 border ${color.split(" ")[1]} rounded p-4 mb-4`}>
+      <h3 className="text-sm font-medium text-zinc-400 mb-3">Trust Score</h3>
+      <div className="flex items-center gap-4 mb-3">
+        <span className={`text-2xl font-mono font-bold ${color.split(" ")[0]}`}>
+          {score.score.toFixed(1)}
+        </span>
+        <span
+          className={`text-xs font-medium px-2 py-0.5 rounded ${color.split(" ")[0]} bg-zinc-700`}
+        >
+          {level}
+        </span>
+        <div className="flex-1 h-2 bg-zinc-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${bgBar} rounded-full`}
+            style={{ width: `${Math.min(100, score.score)}%` }}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-zinc-400 mb-3">{score.rationale_summary}</p>
+      <div className="grid grid-cols-3 gap-2">
+        {components.map((c) => (
+          <div key={c.label} className="flex justify-between items-center">
+            <span className="text-[10px] text-zinc-500">{c.label}</span>
+            <span
+              className={`text-xs font-mono ${c.isPenalty && c.value > 0 ? "text-red-400" : "text-zinc-300"}`}
+            >
+              {c.isPenalty && c.value > 0 ? "-" : ""}
+              {c.value.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

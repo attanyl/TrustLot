@@ -119,7 +119,63 @@ func (s *Server) handleListReconRuns() http.HandlerFunc {
 
 func (s *Server) handleListTrustScores() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"scores": []any{}, "total": 0})
+		if s.truster == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"scores": []any{}, "total": 0})
+			return
+		}
+
+		limit := queryInt(r, "limit", 100)
+		scores, err := s.truster.ListScores(r.Context(), limit)
+		if err != nil {
+			slog.Error("list trust scores", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"scores": scores,
+			"total":  len(scores),
+		})
+	}
+}
+
+func (s *Server) handleTrustScoreForReconResult() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		if s.truster == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "trust service unavailable"})
+			return
+		}
+
+		result, err := s.truster.ComputeForReconResult(r.Context(), id)
+		if err != nil {
+			slog.Error("compute trust score for recon result", "id", id, "error", err)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func (s *Server) handleTrustScoreForException() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		if s.truster == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "trust service unavailable"})
+			return
+		}
+
+		result, err := s.truster.ComputeForException(r.Context(), id)
+		if err != nil {
+			slog.Error("compute trust score for exception", "id", id, "error", err)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

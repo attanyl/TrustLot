@@ -418,3 +418,132 @@ func (s *Store) UpdateReplayCaseStatus(ctx context.Context, id, status string) e
 	}
 	return nil
 }
+
+// GetReconResult returns a single recon result by ID.
+func (s *Store) GetReconResult(ctx context.Context, id string) (model.ReconResult, error) {
+	var r model.ReconResult
+	var reasonCode *string
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, run_id, entity_type, entity_id, status, reason_code, details
+		FROM recon_results WHERE id = $1`, id,
+	).Scan(&r.ID, &r.RunID, &r.EntityType, &r.EntityID, &r.Status, &reasonCode, &r.Details)
+	if err == pgx.ErrNoRows {
+		return r, fmt.Errorf("recon result not found: %s", id)
+	}
+	if err != nil {
+		return r, fmt.Errorf("get recon result: %w", err)
+	}
+	if reasonCode != nil {
+		r.ReasonCode = model.ReasonCode(*reasonCode)
+	}
+	return r, nil
+}
+
+// FindExceptionForEntity finds an exception by recon run, entity type, and entity ID.
+func (s *Store) FindExceptionForEntity(ctx context.Context, runID, entityType, entityID string) (model.Exception, error) {
+	var e model.Exception
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, recon_run_id, entity_type, entity_id, reason_code,
+		       status, assigned_to, created_at, updated_at
+		FROM exceptions
+		WHERE recon_run_id = $1 AND entity_type = $2 AND entity_id = $3
+		ORDER BY updated_at DESC
+		LIMIT 1`, runID, entityType, entityID,
+	).Scan(
+		&e.ID, &e.ReconRunID, &e.EntityType, &e.EntityID, &e.ReasonCode,
+		&e.Status, &e.AssignedTo, &e.CreatedAt, &e.UpdatedAt,
+	)
+	if err != nil {
+		return e, fmt.Errorf("find exception for entity: %w", err)
+	}
+	return e, nil
+}
+
+// TrustScoreRow holds all columns for a persisted trust score.
+type TrustScoreRow struct {
+	ID                string
+	EntityType        string
+	EntityID          string
+	Total             float64
+	SourceReliability float64
+	MappingConfidence float64
+	ReconStatus       float64
+	Freshness         float64
+	Completeness      float64
+	HumanReviewState  float64
+	AnomalyPenalty    float64
+	RationaleSummary  string
+	ComputedAt        time.Time
+}
+
+// UpsertTrustScore inserts or replaces a trust score for a given entity.
+// Returns the ID of the persisted row.
+func (s *Store) UpsertTrustScore(ctx context.Context, ts TrustScoreRow) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO trust_scores (entity_type, entity_id, total,
+			source_reliability, mapping_confidence, recon_status,
+			freshness, completeness, human_review_state, anomaly_penalty,
+			rationale_summary, computed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		ON CONFLICT ON CONSTRAINT uq_trust_scores_entity
+		DO UPDATE SET
+			total = EXCLUDED.total,
+			source_reliability = EXCLUDED.source_reliability,
+			mapping_confidence = EXCLUDED.mapping_confidence,
+			recon_status = EXCLUDED.recon_status,
+			freshness = EXCLUDED.freshness,
+			completeness = EXCLUDED.completeness,
+			human_review_state = EXCLUDED.human_review_state,
+			anomaly_penalty = EXCLUDED.anomaly_penalty,
+			rationale_summary = EXCLUDED.rationale_summary,
+			computed_at = EXCLUDED.computed_at
+		RETURNING id`,
+		ts.EntityType, ts.EntityID, ts.Total,
+		ts.SourceReliability, ts.MappingConfidence, ts.ReconStatus,
+		ts.Freshness, ts.Completeness, ts.HumanReviewState, ts.AnomalyPenalty,
+		ts.RationaleSummary, ts.ComputedAt,
+	).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("upsert trust score: %w", err)
+	}
+	return id, nil
+}
+
+// ListTrustScores returns trust scores ordered by computed_at descending.
+func (s *Store) ListTrustScores(ctx context.Context, limit int) ([]TrustScoreRow, error) {
+	query := `
+		SELECT id, entity_type, entity_id, total,
+			source_reliability, mapping_confidence, recon_status,
+			freshness, completeness, human_review_state, anomaly_penalty,
+			rationale_summary, computed_at
+		FROM trust_scores
+		ORDER BY computed_at DESC`
+
+	args := []any{}
+	if limit > 0 {
+		query += " LIMIT $1"
+		args = append(args, limit)
+	}
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list trust scores: %w", err)
+	}
+	defer rows.Close()
+
+	var out []TrustScoreRow
+	for rows.Next() {
+		var ts TrustScoreRow
+		if err := rows.Scan(
+			&ts.ID, &ts.EntityType, &ts.EntityID, &ts.Total,
+			&ts.SourceReliability, &ts.MappingConfidence, &ts.ReconStatus,
+			&ts.Freshness, &ts.Completeness, &ts.HumanReviewState, &ts.AnomalyPenalty,
+			&ts.RationaleSummary, &ts.ComputedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan trust score: %w", err)
+		}
+		out = append(out, ts)
+	}
+	return out, rows.Err()
+}
