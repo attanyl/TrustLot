@@ -179,15 +179,44 @@ func (s *Server) handleTrustScoreForException() http.HandlerFunc {
 	}
 }
 
-func (s *Server) handleTraceLineage() http.HandlerFunc {
+func (s *Server) handleLineageForEntity() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		entityType := chi.URLParam(r, "entityType")
-		entityID := chi.URLParam(r, "entityID")
-		writeJSON(w, http.StatusOK, map[string]any{
-			"entity_type": entityType,
-			"entity_id":   entityID,
-			"edges":       []any{},
-		})
+		entityID := chi.URLParam(r, "id")
+
+		if s.liner == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "lineage service unavailable"})
+			return
+		}
+
+		graph, err := s.liner.GetLineageForEntity(r.Context(), entityType, entityID)
+		if err != nil {
+			slog.Error("lineage for entity", "entity_type", entityType, "entity_id", entityID, "error", err)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, graph)
+	}
+}
+
+func (s *Server) handleLineageForException() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := chi.URLParam(r, "id")
+
+		if s.liner == nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "lineage service unavailable"})
+			return
+		}
+
+		graph, err := s.liner.GetLineageForException(r.Context(), id)
+		if err != nil {
+			slog.Error("lineage for exception", "exception_id", id, "error", err)
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, graph)
 	}
 }
 

@@ -510,6 +510,134 @@ func (s *Store) UpsertTrustScore(ctx context.Context, ts TrustScoreRow) (string,
 	return id, nil
 }
 
+// GetTrustScoreForEntity returns the trust score for a specific entity.
+func (s *Store) GetTrustScoreForEntity(ctx context.Context, entityType, entityID string) (TrustScoreRow, error) {
+	var ts TrustScoreRow
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, entity_type, entity_id, total,
+			source_reliability, mapping_confidence, recon_status,
+			freshness, completeness, human_review_state, anomaly_penalty,
+			rationale_summary, computed_at
+		FROM trust_scores
+		WHERE entity_type = $1 AND entity_id = $2`, entityType, entityID,
+	).Scan(
+		&ts.ID, &ts.EntityType, &ts.EntityID, &ts.Total,
+		&ts.SourceReliability, &ts.MappingConfidence, &ts.ReconStatus,
+		&ts.Freshness, &ts.Completeness, &ts.HumanReviewState, &ts.AnomalyPenalty,
+		&ts.RationaleSummary, &ts.ComputedAt,
+	)
+	if err != nil {
+		return ts, fmt.Errorf("get trust score for entity: %w", err)
+	}
+	return ts, nil
+}
+
+// ListRawRecordsByBatch returns raw records belonging to a batch.
+func (s *Store) ListRawRecordsByBatch(ctx context.Context, batchID string) ([]model.RawRecord, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, batch_id, seq_num, raw_data, parsed_at, error
+		FROM raw_records
+		WHERE batch_id = $1
+		ORDER BY seq_num`, batchID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list raw records by batch: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.RawRecord
+	for rows.Next() {
+		var r model.RawRecord
+		if err := rows.Scan(&r.ID, &r.BatchID, &r.SeqNum, &r.RawData, &r.ParsedAt, &r.Error); err != nil {
+			return nil, fmt.Errorf("scan raw record: %w", err)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// GetIngestionBatch returns a single ingestion batch by ID.
+func (s *Store) GetIngestionBatch(ctx context.Context, id string) (model.IngestionBatch, error) {
+	var b model.IngestionBatch
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, custodian_id, status, file_ref, record_count, started_at, completed_at, created_at
+		FROM ingestion_batches WHERE id = $1`, id,
+	).Scan(&b.ID, &b.CustodianID, &b.Status, &b.FileRef, &b.RecordCount, &b.StartedAt, &b.CompletedAt, &b.CreatedAt)
+	if err != nil {
+		return b, fmt.Errorf("get ingestion batch: %w", err)
+	}
+	return b, nil
+}
+
+// ListReconResultsForEntity returns all recon results for a given entity.
+func (s *Store) ListReconResultsForEntity(ctx context.Context, entityType, entityID string) ([]model.ReconResult, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, run_id, entity_type, entity_id, status, reason_code, details
+		FROM recon_results
+		WHERE entity_type = $1 AND entity_id = $2
+		ORDER BY created_at DESC`, entityType, entityID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list recon results for entity: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.ReconResult
+	for rows.Next() {
+		var r model.ReconResult
+		var reasonCode *string
+		if err := rows.Scan(&r.ID, &r.RunID, &r.EntityType, &r.EntityID, &r.Status, &reasonCode, &r.Details); err != nil {
+			return nil, fmt.Errorf("scan recon result: %w", err)
+		}
+		if reasonCode != nil {
+			r.ReasonCode = model.ReasonCode(*reasonCode)
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ListExceptionsForEntity returns all exceptions for a given entity.
+func (s *Store) ListExceptionsForEntity(ctx context.Context, entityType, entityID string) ([]model.Exception, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, recon_run_id, entity_type, entity_id, reason_code,
+		       status, assigned_to, created_at, updated_at
+		FROM exceptions
+		WHERE entity_type = $1 AND entity_id = $2
+		ORDER BY created_at DESC`, entityType, entityID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list exceptions for entity: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.Exception
+	for rows.Next() {
+		var e model.Exception
+		if err := rows.Scan(
+			&e.ID, &e.ReconRunID, &e.EntityType, &e.EntityID, &e.ReasonCode,
+			&e.Status, &e.AssignedTo, &e.CreatedAt, &e.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan exception: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// InsertLineageEdge persists a lineage edge.
+func (s *Store) InsertLineageEdge(ctx context.Context, sourceType, sourceID, targetType, targetID, relation string) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO lineage_edges (source_type, source_id, target_type, target_id, relation)
+		VALUES ($1, $2, $3, $4, $5)`,
+		sourceType, sourceID, targetType, targetID, relation,
+	)
+	if err != nil {
+		return fmt.Errorf("insert lineage edge: %w", err)
+	}
+	return nil
+}
+
 // ListTrustScores returns trust scores ordered by computed_at descending.
 func (s *Store) ListTrustScores(ctx context.Context, limit int) ([]TrustScoreRow, error) {
 	query := `

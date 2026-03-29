@@ -117,4 +117,26 @@ INSERT INTO exception_events (exception_id, event_type, actor, detail) VALUES
   ('40000000-0000-0000-0000-000000000003', 'acknowledged', 'ops-analyst', 'reviewing Pioneer cost basis discrepancy')
 ON CONFLICT DO NOTHING;
 
+-- Lineage edges (source → target relationships for auditability)
+-- Positions: entity → recon_result
+INSERT INTO lineage_edges (source_type, source_id, target_type, target_id, relation) VALUES
+  ('position', 'e0000000-0000-0000-0000-000000000001', 'recon_result', '30000000-0000-0000-0000-000000000001', 'reconciled_as'),
+  ('position', 'e0000000-0000-0000-0000-000000000003', 'recon_result', '30000000-0000-0000-0000-000000000002', 'reconciled_as'),
+  ('position', 'e0000000-0000-0000-0000-000000000005', 'recon_result', '30000000-0000-0000-0000-000000000003', 'reconciled_as')
+ON CONFLICT DO NOTHING;
+
+-- Transactions: entity → recon_result
+INSERT INTO lineage_edges (source_type, source_id, target_type, target_id, relation) VALUES
+  ('transaction', 'f0000000-0000-0000-0000-000000000001', 'recon_result', '30000000-0000-0000-0000-000000000004', 'reconciled_as'),
+  ('transaction', 'f0000000-0000-0000-0000-000000000002', 'recon_result', '30000000-0000-0000-0000-000000000005', 'reconciled_as'),
+  ('transaction', 'f0000000-0000-0000-0000-000000000004', 'recon_result', '30000000-0000-0000-0000-000000000006', 'reconciled_as')
+ON CONFLICT DO NOTHING;
+
+-- Recon result → exception (for BREAKs)
+INSERT INTO lineage_edges (source_type, source_id, target_type, target_id, relation) VALUES
+  ('recon_result', '30000000-0000-0000-0000-000000000001', 'exception', '40000000-0000-0000-0000-000000000001', 'raised_exception'),
+  ('recon_result', '30000000-0000-0000-0000-000000000006', 'exception', '40000000-0000-0000-0000-000000000002', 'raised_exception'),
+  ('recon_result', '30000000-0000-0000-0000-000000000009', 'exception', '40000000-0000-0000-0000-000000000003', 'raised_exception')
+ON CONFLICT DO NOTHING;
+
 COMMIT;

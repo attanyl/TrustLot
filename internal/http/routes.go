@@ -15,7 +15,8 @@ func (s *Server) routes() {
 		r.Get("/trust-scores/recon-result/{id}", s.handleTrustScoreForReconResult())
 		r.Get("/trust-scores/exception/{id}", s.handleTrustScoreForException())
 
-		r.Get("/lineage/{entityType}/{entityID}", s.handleTraceLineage())
+		r.Get("/lineage/{entityType}/{id}", s.handleLineageForEntity())
+		r.Get("/lineage/exception/{id}", s.handleLineageForException())
 
 		r.Get("/replay-cases", s.handleListReplayCases())
 		r.Get("/replay-cases/{id}", s.handleGetReplayCase())

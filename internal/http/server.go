@@ -12,6 +12,7 @@ import (
 
 	"github.com/trustlot/trustlot/internal/db"
 	"github.com/trustlot/trustlot/internal/explain"
+	"github.com/trustlot/trustlot/internal/lineage"
 	"github.com/trustlot/trustlot/internal/replay"
 	"github.com/trustlot/trustlot/internal/trust"
 )
@@ -24,6 +25,7 @@ type Server struct {
 	explainer explain.Service
 	replayer  replay.Service
 	truster   trust.Service
+	liner     lineage.Service
 }
 
 // NewServer creates a configured HTTP server.
@@ -41,10 +43,12 @@ func NewServer(addr string, store *db.Store) *Server {
 	var explainer explain.Service
 	var replayer replay.Service
 	var truster trust.Service
+	var liner lineage.Service
 	if store != nil {
 		explainer = explain.NewService(store)
 		replayer = replay.NewService(store)
 		truster = trust.NewService(store)
+		liner = lineage.NewService(store)
 	}
 
 	s := &Server{
@@ -58,6 +62,7 @@ func NewServer(addr string, store *db.Store) *Server {
 		explainer: explainer,
 		replayer:  replayer,
 		truster:   truster,
+		liner:     liner,
 	}
 
 	s.routes()

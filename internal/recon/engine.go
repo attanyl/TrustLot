@@ -230,8 +230,13 @@ func (e *engine) persistResult(ctx context.Context, run model.ReconRun, entityID
 		return fmt.Errorf("persist recon result: %w", err)
 	}
 
+	// Record lineage: entity → recon_result.
+	if err := e.store.InsertLineageEdge(ctx, entityType, entityID, "recon_result", resultID, "reconciled_as"); err != nil {
+		slog.Warn("lineage edge failed", "error", err)
+	}
+
 	if status == model.StatusBreak && reasonCode != nil {
-		return e.createException(ctx, run, entityID, entityType, *reasonCode)
+		return e.createException(ctx, run, entityID, entityType, *reasonCode, resultID)
 	}
 	return nil
 }
@@ -241,7 +246,7 @@ func (e *engine) persistBreak(ctx context.Context, run model.ReconRun, entityID,
 	return e.persistResult(ctx, run, entityID, entityType, model.StatusBreak, &rc, details)
 }
 
-func (e *engine) createException(ctx context.Context, run model.ReconRun, entityID, entityType string, rc model.ReasonCode) error {
+func (e *engine) createException(ctx context.Context, run model.ReconRun, entityID, entityType string, rc model.ReasonCode, reconResultID string) error {
 	now := time.Now()
 	excID := generateID()
 
@@ -263,6 +268,12 @@ func (e *engine) createException(ctx context.Context, run model.ReconRun, entity
 	if err := e.store.InsertExceptionEvent(ctx, excID, "created", "system", fmt.Sprintf(`{"reason_code":"%s"}`, rc)); err != nil {
 		return fmt.Errorf("create exception event: %w", err)
 	}
+
+	// Record lineage: recon_result → exception.
+	if err := e.store.InsertLineageEdge(ctx, "recon_result", reconResultID, "exception", excID, "raised_exception"); err != nil {
+		slog.Warn("lineage edge failed", "error", err)
+	}
+
 	return nil
 }
 

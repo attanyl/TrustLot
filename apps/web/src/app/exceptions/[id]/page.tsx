@@ -75,10 +75,40 @@ async function getExplanation(id: string): Promise<Explanation | null> {
   }
 }
 
+type LineageNode = {
+  id: string;
+  type: string;
+  label: string;
+  metadata?: Record<string, unknown>;
+};
+
+type LineageEdge = {
+  from_id: string;
+  to_id: string;
+  edge_type: string;
+};
+
+type LineageGraph = {
+  root_type: string;
+  root_id: string;
+  nodes: LineageNode[];
+  edges: LineageEdge[];
+};
+
 async function getTrustScore(id: string): Promise<TrustScoreResult | null> {
   try {
     return await apiFetch<TrustScoreResult>(
       `/api/v1/trust-scores/exception/${id}`
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function getLineage(id: string): Promise<LineageGraph | null> {
+  try {
+    return await apiFetch<LineageGraph>(
+      `/api/v1/lineage/exception/${id}`
     );
   } catch {
     return null;
@@ -93,6 +123,7 @@ export default async function ExceptionDetailPage({
   const exc = await getException(params.id);
   const explanation = exc ? await getExplanation(params.id) : null;
   const trustScore = exc ? await getTrustScore(params.id) : null;
+  const lineage = exc ? await getLineage(params.id) : null;
 
   return (
     <div>
@@ -215,17 +246,16 @@ export default async function ExceptionDetailPage({
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <Section title="Evidence">
-                <p className="text-xs text-zinc-600">
-                  Explanation unavailable. Ensure the API is running.
-                </p>
-              </Section>
-              <Section title="Lineage">
-                <p className="text-xs text-zinc-600">
-                  Data lineage trace will appear here in a future milestone.
-                </p>
-              </Section>
+            <Section title="Evidence">
+              <p className="text-xs text-zinc-600">
+                Explanation unavailable. Ensure the API is running.
+              </p>
+            </Section>
+          )}
+
+          {lineage && lineage.nodes.length > 0 && (
+            <div className="mt-4">
+              <LineageChain graph={lineage} />
             </div>
           )}
         </>
@@ -272,6 +302,58 @@ function Section({
       <h3 className="text-sm font-medium text-zinc-400 mb-2">{title}</h3>
       {children}
     </div>
+  );
+}
+
+const nodeTypeTag: Record<string, string> = {
+  ingestion_batch: "BATCH",
+  raw_record: "RAW",
+  position: "POS",
+  transaction: "TXN",
+  recon_result: "RECON",
+  exception: "EXCPT",
+  trust_score: "TRUST",
+};
+
+const nodeTypeBorder: Record<string, string> = {
+  ingestion_batch: "border-blue-500/30",
+  raw_record: "border-blue-500/20",
+  position: "border-cyan-500/30",
+  transaction: "border-cyan-500/30",
+  recon_result: "border-amber-500/30",
+  exception: "border-red-500/30",
+  trust_score: "border-emerald-500/30",
+};
+
+function LineageChain({ graph }: { graph: LineageGraph }) {
+  return (
+    <Section title="Lineage">
+      <div className="space-y-1.5">
+        {graph.nodes.map((node, i) => (
+          <div key={node.id}>
+            {i > 0 && (
+              <div className="ml-4 h-3 border-l border-zinc-700" />
+            )}
+            <div
+              className={`border rounded px-3 py-2 bg-zinc-800/50 ${nodeTypeBorder[node.type] || "border-zinc-700"}`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-mono font-bold text-zinc-500 bg-zinc-700/60 px-1 py-0.5 rounded">
+                  {nodeTypeTag[node.type] || node.type}
+                </span>
+                <span className="text-xs text-zinc-300">{node.label}</span>
+              </div>
+              <div className="text-[10px] font-mono text-zinc-600 mt-0.5">
+                {node.id}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-[10px] text-zinc-600">
+        {graph.nodes.length} nodes, {graph.edges.length} edges
+      </div>
+    </Section>
   );
 }
 
